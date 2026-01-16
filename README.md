@@ -12,9 +12,34 @@ This project provides a complete SCCM lab environment built with:
 
 ## Quick Start
 
-```bash
-# Prerequisites: NixOS with flakes enabled
+### Prerequisites
 
+Before using this project, configure your NixOS system:
+
+1. **Enable Nix Flakes** - Add to `/etc/nixos/configuration.nix`:
+   ```nix
+   nix.settings.experimental-features = [ "nix-command" "flakes" ];
+   ```
+
+2. **Enable VirtualBox** - Add to `/etc/nixos/configuration.nix`:
+   ```nix
+   virtualisation.virtualbox.host.enable = true;
+   nixpkgs.config.allowUnfree = true;
+   users.users.yourusername.extraGroups = [ "vboxusers" ];
+   ```
+   Replace `yourusername` with your actual username.
+
+3. **Apply configuration**:
+   ```bash
+   sudo nixos-rebuild switch
+   sudo reboot
+   ```
+
+📖 **Detailed setup instructions**: See [docs/nix-setup.md](docs/nix-setup.md)
+
+### Usage
+
+```bash
 # Clone repository
 git clone <repository-url>
 cd homelab-SCCM
@@ -22,10 +47,10 @@ cd homelab-SCCM
 # Enter development environment
 nix develop
 
-# Verify tools
-vagrant --version
-VBoxManage --version
-pwsh --version
+# Verify tools (should show no warnings)
+vagrant --version   # Should show: Vagrant 2.4.1
+VBoxManage --version  # Should show: 7.0.22r165102
+pwsh --version       # Should show: PowerShell 7.4.2
 
 # Start lab (Phase 2+)
 cd vagrant

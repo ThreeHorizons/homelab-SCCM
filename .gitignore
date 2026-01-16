@@ -1,0 +1,77 @@
+# Nix build outputs
+result
+result-*
+
+# Vagrant
+.vagrant/
+*.box
+vagrant/boxes/*.box
+
+# VirtualBox VMs
+*.vdi
+*.vmdk
+*.vbox
+*.vbox-prev
+
+# Windows ISOs and large files
+*.iso
+*.wim
+
+# Logs
+*.log
+logs/
+
+# PowerShell
+*.ps1xml
+
+# Secrets and credentials
+secrets/
+*.secret
+*.cred
+passwords.txt
+credentials.xml
+
+# OS specific
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Ansible (if used in future)
+*.retry
+
+# Terraform (if used in future)
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# SSH keys
+*.pem
+*.key
+id_rsa*
+
+# Backup files
+*.bak
+*.backup
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+
+# Documentation builds
+docs/_build/
+site/

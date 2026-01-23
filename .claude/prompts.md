@@ -1,0 +1,1 @@
+Let's proceed with phase 1 using the [@phase1-checklist.md](file:///home/myodhes-nix/projects/homelab-SCCM/.claude/phase1-checklist.md). I'd like to do this in a manner to best facilitate my learning. Explain the technologies, what you are doing, why you are doing it and how the syntax works for each action you do and piece of code you write. Update The checklist as you go.

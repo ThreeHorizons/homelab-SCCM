@@ -51,7 +51,6 @@ This project follows a structured, phase-based development approach to ensure ea
 1. Initialize git repository structure
 2. Create `flake.nix` with core dependencies:
    - Vagrant (latest stable)
-   - VirtualBox (7.0.x or 7.1.x)
    - PowerShell Core (7.x)
    - WinRM/WinRS tools
    - Python (for tooling)
@@ -60,8 +59,10 @@ This project follows a structured, phase-based development approach to ensure ea
 5. Create comprehensive documentation
 6. Test flake on fresh NixOS system
 
+**Note**: VirtualBox is a system-level prerequisite, not provided by the flake. It requires kernel modules and setuid wrappers that must be installed at the OS level. See `docs/nix-setup.md` for installation instructions.
+
 **Sub-tasks & Considerations**:
-- [ ] Verify VirtualBox kernel module compatibility with current NixOS kernel
+- [ ] Document VirtualBox installation for each supported platform
 - [ ] Test VirtualBox host-only networking interface creation
 - [ ] Ensure PowerShell modules can access WinRM (may require dotnet runtime)
 - [ ] Document how to enable Nix flakes if not already enabled
@@ -72,10 +73,10 @@ This project follows a structured, phase-based development approach to ensure ea
 - `flake.lock` - Pinned dependencies
 - `README.md` - Quick start guide
 - `docs/topology.md` - Network and VM architecture
-- `docs/nix-setup.md` - Detailed Nix environment setup
+- `docs/nix-setup.md` - Detailed Nix environment setup (including VirtualBox installation)
 
 **Potential Issues**:
-- VirtualBox kernel modules may require `allowUnfree = true` in Nix config
+- VirtualBox installation varies by platform (NixOS, Ubuntu, Fedora, macOS, etc.)
 - Host-only networks limited to 192.168.56.0/21 range on Linux hosts
 - VirtualBox may require manual `/etc/vbox/networks.conf` configuration
 - PowerShell Core may need `icu` library dependencies
@@ -396,6 +397,7 @@ As of 2026, most enterprises use hybrid management combining on-premises SCCM wi
 - Handle distribution-specific differences
 - Maintain NixOS experience on non-NixOS systems
 - Document platform-specific requirements
+- Add KVM/libvirt support as alternative to VirtualBox
 
 **Tasks**:
 1. Add conditional logic to flake.nix for Linux variations
@@ -403,17 +405,24 @@ As of 2026, most enterprises use hybrid management combining on-premises SCCM wi
    - Kernel module compilation on different kernels
    - Package names across distributions
    - Repository configuration
-3. Handle Vagrant installation variations:
+3. **Add KVM/libvirt/QEMU support** (alternative hypervisor):
+   - Install vagrant-libvirt plugin
+   - Configure libvirt daemon and user permissions
+   - Create libvirt-specific Vagrantfile provider configuration
+   - Handle nested virtualization requirements
+   - Document performance differences vs. VirtualBox
+   - Test with both system libvirt and user session
+4. Handle Vagrant installation variations:
    - Distribution packages vs. HashiCorp repositories
    - Plugin installation differences
-4. Test on major distributions:
+5. Test on major distributions:
    - Ubuntu 22.04/24.04 LTS
    - Fedora 39/40
    - Arch Linux
    - Debian 12
-5. Document distribution-specific setup steps
-6. Create distribution detection and auto-configuration
-7. Handle permission differences (Docker/VirtualBox groups)
+6. Document distribution-specific setup steps
+7. Create distribution detection and auto-configuration
+8. Handle permission differences (Docker/VirtualBox/libvirt groups)
 
 **Sub-tasks & Considerations**:
 - [ ] Create VM snapshots for testing on different distros
@@ -426,6 +435,16 @@ As of 2026, most enterprises use hybrid management combining on-premises SCCM wi
 - [ ] Handle package manager variations (apt, dnf, pacman)
 - [ ] Consider Flatpak/Snap as alternative VirtualBox sources
 - [ ] Test with both regular users and sudoers
+- [ ] **KVM/libvirt specific**:
+  - [ ] Document resolving VirtualBox vs. KVM conflict (AMD-V/VT-x mutual exclusion)
+  - [ ] Test vagrant-libvirt plugin with both Ruby-bundled and system libvirt
+  - [ ] Verify nested virtualization support (Intel: vmx, AMD: svm in /proc/cpuinfo)
+  - [ ] Document libvirt default network configuration (192.168.122.0/24 vs. custom)
+  - [ ] Test with both qemu:///system and qemu:///session connections
+  - [ ] Handle libvirt storage pool configuration
+  - [ ] Document differences in Vagrant box format (libvirt vs. virtualbox)
+  - [ ] Test Windows guest performance with virtio drivers vs. emulated hardware
+  - [ ] Consider providing both VirtualBox and libvirt Vagrantfile configurations
 
 **Deliverables**:
 - Updated `flake.nix` with cross-platform support
@@ -433,16 +452,26 @@ As of 2026, most enterprises use hybrid management combining on-premises SCCM wi
 - `docs/ubuntu-setup.md` - Ubuntu-specific instructions
 - `docs/fedora-setup.md` - Fedora-specific instructions
 - `docs/arch-setup.md` - Arch-specific instructions
+- `docs/kvm-libvirt-setup.md` - KVM/libvirt alternative hypervisor guide
+- `vagrant/Vagrantfile.libvirt` - libvirt provider configuration (optional)
 - `scripts/detect-distro.sh` - Distribution detection helper
+- `scripts/switch-hypervisor.sh` - Helper to switch between VirtualBox and KVM
 - Test results matrix documenting compatibility
 
 **Potential Issues**:
+- **VirtualBox vs. KVM conflict**: Only one hypervisor can use AMD-V/VT-x at a time (VERR_SVM_IN_USE error)
 - VirtualBox kernel modules may not compile on latest kernels
 - Secure Boot may prevent VirtualBox module loading
 - Different VirtualBox versions across distributions
 - Nix installation requires root or user namespace support
 - Some distributions may require VirtualBox repository addition
 - Extension Pack licensing restrictions in corporate environments
+- **KVM-specific**:
+  - vagrant-libvirt requires development libraries (libvirt-dev, qemu)
+  - Nested virtualization may not be enabled by default
+  - Windows guest performance may vary with different virtio driver versions
+  - Limited availability of libvirt-compatible Windows Vagrant boxes
+  - libvirt networking uses different subnet (192.168.122.0/24) by default
 
 ---
 
@@ -568,14 +597,16 @@ As of 2026, most enterprises use hybrid management combining on-premises SCCM wi
 |-----------|---------|-------|
 | **NixOS** | 23.11+ or Unstable | Host operating system (Phase 1-4) |
 | **Nix** | 2.19+ | With flakes enabled |
-| **Vagrant** | 2.4.0+ | VM orchestration |
-| **VirtualBox** | 7.0.x or 7.1.x | Virtualization platform |
-| **PowerShell** | 7.4+ | Windows automation |
+| **VirtualBox** | 7.0+ | **System prerequisite** - install at OS level |
+| **Vagrant** | 2.4.0+ | Provided by flake |
+| **PowerShell** | 7.4+ | Provided by flake |
 | **Windows Server** | 2022 | Domain Controller & SCCM host |
 | **SQL Server** | 2019 or 2022 | SCCM database (Standard or Developer) |
 | **SCCM/ConfigMgr** | Current Branch (2403+) | Target: Latest Current Branch |
 | **Windows 10/11** | Latest | Client operating systems |
 | **Windows ADK** | Matching Windows version | OS deployment prerequisites |
+
+**Note**: VirtualBox must be installed at the system level (not via the flake) because it requires kernel modules and platform-specific integration. See `docs/nix-setup.md` for installation instructions for each platform.
 
 ### Hardware Requirements
 

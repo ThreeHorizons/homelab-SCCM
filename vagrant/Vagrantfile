@@ -1,0 +1,373 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+#
+# =============================================================================
+# SCCM Homelab - Multi-VM Vagrant Configuration
+# =============================================================================
+#
+# This Vagrantfile defines a complete SCCM/ConfigMgr lab environment using
+# VirtualBox as the hypervisor. It creates:
+#
+#   - DC01:     Domain Controller (Active Directory, DNS, DHCP)
+#   - SCCM01:   SCCM Primary Site Server (SQL Server + ConfigMgr)
+#   - CLIENTxx: Windows 10/11 client machines (configurable count)
+#
+# NETWORK TOPOLOGY:
+#   - Host-Only Network (vboxnet0): 192.168.56.0/24 for inter-VM communication
+#   - NAT Network: Provides internet access to all VMs
+#
+# USAGE:
+#   vagrant up              # Start all VMs
+#   vagrant up dc01         # Start only DC01
+#   vagrant status          # Check VM status
+#   vagrant halt            # Stop all VMs
+#   vagrant destroy -f      # Delete all VMs
+#   vagrant snapshot save dc01 "base"  # Create a snapshot
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# CONFIGURATION VARIABLES
+# -----------------------------------------------------------------------------
+# These Ruby variables define common settings that can be reused across VMs.
+# In Ruby, variables are dynamically typed - you just assign values directly.
+# ALL_CAPS is a convention for constants (values that shouldn't change).
+
+# Base boxes - pre-built Windows images from Vagrant Cloud
+# gusztavvargadr builds these boxes with VirtualBox Guest Additions and WinRM
+# pre-configured, which makes them ideal for automated provisioning
+SERVER_BOX = "gusztavvargadr/windows-server-2022-standard"
+CLIENT_BOX = "gusztavvargadr/windows-11"
+
+# Network configuration
+# 192.168.56.x is the default range VirtualBox allows for host-only networks
+# See /etc/vbox/networks.conf if you need to customize this range
+HOSTONLY_NETWORK = "192.168.56"
+DC_IP     = "#{HOSTONLY_NETWORK}.10"    # Static IP for Domain Controller
+SCCM_IP   = "#{HOSTONLY_NETWORK}.11"    # Static IP for SCCM Server
+# Clients will use DHCP - DC01 will assign IPs from 192.168.56.100-200
+
+# Resource allocation (memory in MB)
+# These values balance functionality with typical host machine resources
+# Minimum viable: DC=2GB, SCCM=4GB (SCCM needs memory for SQL Server)
+DC_MEMORY   = 2048    # 2GB for Domain Controller
+DC_CPUS     = 2
+SCCM_MEMORY = 4096    # 4GB for SCCM + SQL Server
+SCCM_CPUS   = 2
+CLIENT_MEMORY = 2048  # 2GB per client
+CLIENT_CPUS   = 2
+
+# Client VM count - configurable via environment variable
+# Example: CLIENT_COUNT=3 vagrant up
+# The `|| 1` is Ruby's "or" operator - provides default if env var is empty
+CLIENT_COUNT = (ENV['CLIENT_COUNT'] || 1).to_i
+
+# Lab naming
+# Prefix all VMs with this string for easy identification in VirtualBox
+VM_PREFIX = "sccm-lab"
+
+# Timeouts for Windows (Windows boots slower than Linux)
+# These values are in seconds
+BOOT_TIMEOUT = 600       # 10 minutes for initial boot
+COMMUNICATOR_TIMEOUT = 300  # 5 minutes for WinRM connection
+
+# -----------------------------------------------------------------------------
+# VAGRANT CONFIGURATION BLOCK
+# -----------------------------------------------------------------------------
+# The Vagrant.configure("2") block is the main configuration container.
+# The "2" refers to the configuration version - always use "2" for modern Vagrant.
+# The |config| creates a configuration object we can modify.
+
+Vagrant.configure("2") do |config|
+
+  # ---------------------------------------------------------------------------
+  # GLOBAL SETTINGS (apply to all VMs)
+  # ---------------------------------------------------------------------------
+
+  # WinRM is the Windows Remote Management protocol - Microsoft's answer to SSH
+  # It allows remote command execution on Windows machines
+  # Vagrant uses WinRM to run provisioning scripts on Windows guests
+  config.vm.communicator = "winrm"
+
+  # WinRM authentication settings
+  # "vagrant" is the default username/password for Vagrant boxes
+  config.winrm.username = "vagrant"
+  config.winrm.password = "vagrant"
+
+  # WinRM timeout - how long to wait for Windows to become accessible
+  # Windows takes longer to boot than Linux, especially on first boot
+  config.winrm.timeout = COMMUNICATOR_TIMEOUT
+
+  # Boot timeout - maximum time to wait for the VM to boot
+  # Windows updates, sysprep, and first-run tasks can be slow
+  config.vm.boot_timeout = BOOT_TIMEOUT
+
+  # Disable automatic box update checking
+  # This speeds up `vagrant up` by not checking Vagrant Cloud for new versions
+  # Run `vagrant box update` manually when you want to update
+  config.vm.box_check_update = false
+
+  # ---------------------------------------------------------------------------
+  # VM DEFINITION: DC01 - Domain Controller
+  # ---------------------------------------------------------------------------
+  # config.vm.define creates a named VM configuration
+  # "dc01" is the name we'll use with Vagrant commands (vagrant up dc01)
+  # |dc| creates a scoped configuration object for just this VM
+
+  config.vm.define "dc01", primary: true do |dc|
+    # The `primary: true` flag means this VM starts first when running `vagrant up`
+    # without specifying a VM name. Order matters for domain environments!
+
+    # Base box - the pre-built VM image to start from
+    # This downloads from Vagrant Cloud on first use (~6-8GB)
+    dc.vm.box = SERVER_BOX
+
+    # Hostname - the Windows computer name
+    # Windows has a 15-character limit for NetBIOS names
+    dc.vm.hostname = "DC01"
+
+    # Guest OS type hint - helps Vagrant optimize for Windows
+    dc.vm.guest = :windows
+
+    # -------------------------------------------------------------------------
+    # NETWORK CONFIGURATION
+    # -------------------------------------------------------------------------
+
+    # Private network - VirtualBox host-only adapter
+    # This creates an isolated network between VMs and the host
+    # `ip:` sets a static IP address for this interface
+    # `virtualbox__intnet: false` means use host-only, not internal network
+    dc.vm.network "private_network",
+      ip: DC_IP,
+      virtualbox__intnet: false
+
+    # Forwarded ports - access VM services from host
+    # format: guest: <VM port>, host: <host port>
+    # RDP (3389) lets you connect with Remote Desktop from your host
+    # WinRM (5985) is for PowerShell remoting - Vagrant uses this
+    dc.vm.network "forwarded_port", guest: 3389, host: 33891, id: "rdp"
+    dc.vm.network "forwarded_port", guest: 5985, host: 55851, id: "winrm"
+
+    # -------------------------------------------------------------------------
+    # VIRTUALBOX PROVIDER CONFIGURATION
+    # -------------------------------------------------------------------------
+    # The provider block configures VirtualBox-specific settings
+    # `vb` is the VirtualBox provider object
+
+    dc.vm.provider "virtualbox" do |vb|
+      # VM name as shown in VirtualBox GUI
+      # Using a prefix makes it easy to identify lab VMs
+      vb.name = "#{VM_PREFIX}-dc01"
+
+      # Memory allocation in MB
+      vb.memory = DC_MEMORY
+
+      # Number of virtual CPUs
+      vb.cpus = DC_CPUS
+
+      # GUI mode - set to true to see the VM console window
+      # false = headless mode (runs in background)
+      vb.gui = false
+
+      # VirtualBox customizations using VBoxManage commands
+      # `customize` runs VBoxManage commands before VM starts
+      # Format: ["modifyvm", :id, "--setting", "value"]
+      # :id is replaced with the actual VM ID by Vagrant
+
+      # Graphics controller - VBoxSVGA is recommended for Windows 10+
+      vb.customize ["modifyvm", :id, "--graphicscontroller", "vboxsvga"]
+
+      # Video memory - 128MB is good for Windows desktop
+      vb.customize ["modifyvm", :id, "--vram", "128"]
+
+      # Enable clipboard sharing between host and guest
+      # Requires Guest Additions installed (included in our base boxes)
+      vb.customize ["modifyvm", :id, "--clipboard", "bidirectional"]
+
+      # Enable drag-and-drop file transfer
+      vb.customize ["modifyvm", :id, "--draganddrop", "bidirectional"]
+
+      # Hardware virtualization settings
+      # VT-x/AMD-V nested paging improves performance
+      vb.customize ["modifyvm", :id, "--nested-hw-virt", "off"]
+
+      # Paravirtualization interface - KVM is optimal for Linux hosts
+      # This provides paravirtualized clock and other optimizations
+      vb.customize ["modifyvm", :id, "--paravirtprovider", "kvm"]
+
+      # Audio - disable to reduce resource usage (not needed for lab)
+      vb.customize ["modifyvm", :id, "--audio", "none"]
+
+      # USB - disable to avoid permission issues
+      vb.customize ["modifyvm", :id, "--usb", "off"]
+    end
+
+    # -------------------------------------------------------------------------
+    # PROVISIONING
+    # -------------------------------------------------------------------------
+    # Provisioners run scripts/commands on the VM after it boots
+    # They only run once by default (use --provision to force re-run)
+
+    # Shell provisioner runs PowerShell scripts on Windows guests
+    # `path:` points to a script file relative to Vagrantfile location
+    # `privileged: true` runs as Administrator (required for system changes)
+
+    dc.vm.provision "shell",
+      path: "scripts/bootstrap.ps1",
+      privileged: true,
+      # Arguments passed to the script as $args array or named parameters
+      args: ["-ComputerName", "DC01", "-Role", "DomainController"]
+
+    # Second provisioner for WinRM configuration
+    # Runs after bootstrap.ps1 completes
+    dc.vm.provision "shell",
+      path: "scripts/enable-winrm.ps1",
+      privileged: true
+  end
+
+  # ---------------------------------------------------------------------------
+  # VM DEFINITION: SCCM01 - Configuration Manager Server
+  # ---------------------------------------------------------------------------
+
+  config.vm.define "sccm01" do |sccm|
+    sccm.vm.box = SERVER_BOX
+    sccm.vm.hostname = "SCCM01"
+    sccm.vm.guest = :windows
+
+    # Network configuration - static IP
+    sccm.vm.network "private_network",
+      ip: SCCM_IP,
+      virtualbox__intnet: false
+
+    # Port forwarding - different host ports to avoid conflicts
+    sccm.vm.network "forwarded_port", guest: 3389, host: 33892, id: "rdp"
+    sccm.vm.network "forwarded_port", guest: 5985, host: 55852, id: "winrm"
+
+    sccm.vm.provider "virtualbox" do |vb|
+      vb.name = "#{VM_PREFIX}-sccm01"
+      vb.memory = SCCM_MEMORY  # 4GB for SQL Server + SCCM
+      vb.cpus = SCCM_CPUS
+      vb.gui = false
+
+      # Same VirtualBox customizations as DC01
+      vb.customize ["modifyvm", :id, "--graphicscontroller", "vboxsvga"]
+      vb.customize ["modifyvm", :id, "--vram", "128"]
+      vb.customize ["modifyvm", :id, "--clipboard", "bidirectional"]
+      vb.customize ["modifyvm", :id, "--draganddrop", "bidirectional"]
+      vb.customize ["modifyvm", :id, "--nested-hw-virt", "off"]
+      vb.customize ["modifyvm", :id, "--paravirtprovider", "kvm"]
+      vb.customize ["modifyvm", :id, "--audio", "none"]
+      vb.customize ["modifyvm", :id, "--usb", "off"]
+    end
+
+    # Provisioning scripts
+    sccm.vm.provision "shell",
+      path: "scripts/bootstrap.ps1",
+      privileged: true,
+      args: ["-ComputerName", "SCCM01", "-Role", "SCCMServer"]
+
+    sccm.vm.provision "shell",
+      path: "scripts/enable-winrm.ps1",
+      privileged: true
+  end
+
+  # ---------------------------------------------------------------------------
+  # VM DEFINITIONS: CLIENT VMs (dynamically created based on CLIENT_COUNT)
+  # ---------------------------------------------------------------------------
+  # Ruby's (1..n).each creates a loop from 1 to n
+  # This allows us to create multiple client VMs with a single block
+
+  (1..CLIENT_COUNT).each do |i|
+    # String formatting: "%02d" pads with zeros (1 becomes "01")
+    # This ensures proper sorting: client01, client02, ... client10
+    client_name = "client%02d" % i
+
+    config.vm.define client_name do |client|
+      client.vm.box = CLIENT_BOX
+      client.vm.hostname = client_name.upcase  # Windows hostnames are uppercase
+      client.vm.guest = :windows
+
+      # Network - DHCP for clients
+      # type: "dhcp" means this VM will request an IP from a DHCP server
+      # In our lab, DC01 will run DHCP and assign IPs in the 192.168.56.100-200 range
+      # NOTE: Until DC01's DHCP is configured, clients will have link-local IPs
+      client.vm.network "private_network",
+        type: "dhcp",
+        virtualbox__intnet: false
+
+      # Port forwarding - calculate ports based on client number
+      # This avoids conflicts: client01 gets 33900, client02 gets 33901, etc.
+      client.vm.network "forwarded_port", guest: 3389, host: 33900 + i, id: "rdp"
+      client.vm.network "forwarded_port", guest: 5985, host: 55900 + i, id: "winrm"
+
+      client.vm.provider "virtualbox" do |vb|
+        vb.name = "#{VM_PREFIX}-#{client_name}"
+        vb.memory = CLIENT_MEMORY
+        vb.cpus = CLIENT_CPUS
+        vb.gui = false
+
+        vb.customize ["modifyvm", :id, "--graphicscontroller", "vboxsvga"]
+        vb.customize ["modifyvm", :id, "--vram", "128"]
+        vb.customize ["modifyvm", :id, "--clipboard", "bidirectional"]
+        vb.customize ["modifyvm", :id, "--draganddrop", "bidirectional"]
+        vb.customize ["modifyvm", :id, "--nested-hw-virt", "off"]
+        vb.customize ["modifyvm", :id, "--paravirtprovider", "kvm"]
+        vb.customize ["modifyvm", :id, "--audio", "none"]
+        vb.customize ["modifyvm", :id, "--usb", "off"]
+      end
+
+      # Provisioning
+      client.vm.provision "shell",
+        path: "scripts/bootstrap.ps1",
+        privileged: true,
+        args: ["-ComputerName", client_name.upcase, "-Role", "Client"]
+
+      client.vm.provision "shell",
+        path: "scripts/enable-winrm.ps1",
+        privileged: true
+    end
+  end
+
+end
+
+# =============================================================================
+# NOTES & TROUBLESHOOTING
+# =============================================================================
+#
+# FIRST-TIME SETUP:
+#   1. Boxes download on first `vagrant up` (may take 30+ minutes)
+#   2. Run `vagrant box add gusztavvargadr/windows-server-2022-standard` to pre-download
+#   3. Ensure VirtualBox host-only network exists: VBoxManage list hostonlyifs
+#
+# COMMON ISSUES:
+#
+#   WinRM connection timeout:
+#     - Windows may still be completing first-boot tasks
+#     - Try: vagrant reload <vm-name>
+#     - Check VM console with: vagrant up <vm-name> --provider virtualbox
+#       then set vb.gui = true
+#
+#   VM won't start:
+#     - Check VT-x/AMD-V is enabled in BIOS
+#     - Ensure no other hypervisor (Hyper-V) is running
+#     - Review VirtualBox logs: ~/.config/VirtualBox/VBoxSVC.log
+#
+#   Network issues:
+#     - Verify host-only adapter: VBoxManage list hostonlyifs
+#     - Check adapter IP: should be 192.168.56.1
+#     - Disable VirtualBox DHCP: VBoxManage dhcpserver modify --ifname vboxnet0 --disable
+#
+# USEFUL COMMANDS:
+#
+#   vagrant status                    # Check all VM states
+#   vagrant up dc01                   # Start specific VM
+#   vagrant halt                      # Stop all VMs gracefully
+#   vagrant suspend                   # Pause all VMs (saves state)
+#   vagrant resume                    # Resume paused VMs
+#   vagrant destroy -f                # Delete all VMs
+#   vagrant snapshot save dc01 base   # Create snapshot
+#   vagrant snapshot restore dc01 base # Restore snapshot
+#   vagrant rdp dc01                  # Open RDP connection (requires xfreerdp)
+#   vagrant winrm dc01 -c "hostname"  # Run command via WinRM
+#
+# =============================================================================

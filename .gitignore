@@ -70,7 +70,10 @@ __pycache__/
 *.pyc
 *.pyo
 venv/
+
+# Environment files (keep .env.example but ignore actual .env)
 .env
+.envrc
 
 # Documentation builds
 docs/_build/

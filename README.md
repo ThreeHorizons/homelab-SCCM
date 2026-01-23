@@ -14,28 +14,31 @@ This project provides a complete SCCM lab environment built with:
 
 ### Prerequisites
 
-Before using this project, configure your NixOS system:
+**1. Install VirtualBox**
 
-1. **Enable Nix Flakes** - Add to `/etc/nixos/configuration.nix`:
-   ```nix
-   nix.settings.experimental-features = [ "nix-command" "flakes" ];
-   ```
+VirtualBox must be installed at the system level before using this project.
 
-2. **Enable VirtualBox** - Add to `/etc/nixos/configuration.nix`:
-   ```nix
-   virtualisation.virtualbox.host.enable = true;
-   nixpkgs.config.allowUnfree = true;
-   users.users.yourusername.extraGroups = [ "vboxusers" ];
-   ```
-   Replace `yourusername` with your actual username.
+| Platform | Installation |
+|----------|-------------|
+| **NixOS** | Add to `/etc/nixos/configuration.nix`:<br>`virtualisation.virtualbox.host.enable = true;`<br>`users.users.yourusername.extraGroups = [ "vboxusers" ];`<br>Then run: `sudo nixos-rebuild switch && sudo reboot` |
+| **Ubuntu/Debian** | `sudo apt install virtualbox` |
+| **Fedora** | `sudo dnf install VirtualBox` |
+| **Arch Linux** | `sudo pacman -S virtualbox virtualbox-host-modules-arch` |
+| **macOS** | Download from [virtualbox.org](https://www.virtualbox.org/wiki/Downloads) |
 
-3. **Apply configuration**:
-   ```bash
-   sudo nixos-rebuild switch
-   sudo reboot
-   ```
+**2. Enable Nix Flakes** (if not already enabled)
 
-📖 **Detailed setup instructions**: See [docs/nix-setup.md](docs/nix-setup.md)
+Add to `~/.config/nix/nix.conf` or `/etc/nix/nix.conf`:
+```
+experimental-features = nix-command flakes
+```
+
+Or on NixOS, add to `/etc/nixos/configuration.nix`:
+```nix
+nix.settings.experimental-features = [ "nix-command" "flakes" ];
+```
+
+For detailed setup instructions, see [docs/nix-setup.md](docs/nix-setup.md).
 
 ### Usage
 
@@ -44,13 +47,19 @@ Before using this project, configure your NixOS system:
 git clone <repository-url>
 cd homelab-SCCM
 
+# (Optional) Configure custom storage location for VMs
+# Recommended if you have limited space in your home directory
+./scripts/configure-storage.sh /mnt/vms
+# This will configure Vagrant and VirtualBox to use /mnt/vms
+# See docs/storage-configuration.md for details
+
 # Enter development environment
 nix develop
 
-# Verify tools (should show no warnings)
-vagrant --version   # Should show: Vagrant 2.4.1
-VBoxManage --version  # Should show: 7.0.22r165102
-pwsh --version       # Should show: PowerShell 7.4.2
+# Verify tools
+vagrant --version     # Vagrant 2.4.x
+VBoxManage --version  # 7.x.x (from system)
+pwsh --version        # PowerShell 7.x
 
 # Start lab (Phase 2+)
 cd vagrant
@@ -63,13 +72,14 @@ Currently in **Phase 1** development. See [CLAUDE.md](./CLAUDE.md) for the compl
 
 ### Roadmap
 
-- 🟡 **Phase 1**: Repository & Flake Foundation (Current)
-- ⚪ **Phase 2**: Vagrant Multi-VM Topology
-- ⚪ **Phase 3**: WinRM Automation Layer
-- ⚪ **Phase 4**: PXE Booting & OSD
-- ⚪ **Phase 5**: Linux Cross-Platform Support
-- ⚪ **Phase 6**: macOS Support
-- ⚪ **Phase 7**: Container Alternative (Optional)
+- **Phase 1**: Repository & Flake Foundation (Complete)
+- **Phase 2**: Vagrant Multi-VM Topology
+- **Phase 3**: WinRM Automation Layer
+- **Phase 3.5**: Azure Integration (Optional)
+- **Phase 4**: PXE Booting & OSD
+- **Phase 5**: Linux Cross-Platform Support
+- **Phase 6**: macOS Support
+- **Phase 7**: Container Alternative (Optional)
 
 ## Infrastructure
 
@@ -97,11 +107,8 @@ Comprehensive documentation is available in [CLAUDE.md](./CLAUDE.md), including:
 - Official resource links
 
 Additional documentation in `docs/`:
-- Architecture and topology diagrams
-- Setup guides for different platforms
-- WinRM automation details
-- PXE/OSD implementation
-- Task sequence design
+- [docs/nix-setup.md](docs/nix-setup.md) - Nix environment setup
+- [docs/topology.md](docs/topology.md) - Network architecture
 
 ## Requirements
 
@@ -111,8 +118,8 @@ Additional documentation in `docs/`:
 - **Storage**: 100GB+ (SSD recommended)
 
 ### Software
-- NixOS 23.11+ (or Nix with flakes on other platforms in later phases)
-- VirtualBox 7.0.x or 7.1.x
+- **VirtualBox** 7.0+ (installed at system level)
+- **Nix** with flakes enabled (provides Vagrant, PowerShell, etc.)
 - Windows Server 2022 evaluation ISOs
 - Windows 10/11 evaluation ISOs
 

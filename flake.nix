@@ -73,10 +73,14 @@
               curl             # Transfer data with URLs
               wget             # Download files
               netcat           # Network debugging
+              freerdp          # GUI remote via xfreerdp
 
               # Text processing (useful for parsing logs)
               jq               # JSON processor
               yq-go            # YAML processor
+
+              # Hardware virtualization
+              swtpm            # TPM emulator
             ];
 
             # `shellHook` runs commands when entering the dev shell

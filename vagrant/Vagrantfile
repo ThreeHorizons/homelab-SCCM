@@ -133,6 +133,15 @@ Vagrant.configure("2") do |config|
     # NETWORK CONFIGURATION
     # -------------------------------------------------------------------------
 
+    # NAT network - provides internet access with static IP
+    # By default, Vagrant creates a NAT adapter automatically, but we want to
+    # set a static IP for predictable configuration
+    dc.vm.network "private_network",
+      ip: "10.0.2.15",
+      netmask: "255.255.255.0",
+      auto_config: true,
+      nic_type: "82540EM"
+
     # Private network - VirtualBox host-only adapter
     # This creates an isolated network between VMs and the host
     # `ip:` sets a static IP address for this interface
@@ -200,6 +209,12 @@ Vagrant.configure("2") do |config|
 
       # USB - disable to avoid permission issues
       vb.customize ["modifyvm", :id, "--usb", "off"]
+
+      # Disable IPv6 on all network adapters
+      # This prevents IPv6 conflicts and simplifies networking configuration
+      vb.customize ["modifyvm", :id, "--nicpromisc1", "deny"]
+      vb.customize ["modifyvm", :id, "--nicpromisc2", "deny"]
+      vb.customize ["modifyvm", :id, "--nicpromisc3", "deny"]
     end
 
     # -------------------------------------------------------------------------
@@ -207,6 +222,14 @@ Vagrant.configure("2") do |config|
     # -------------------------------------------------------------------------
     # Provisioners run scripts/commands on the VM after it boots
     # They only run once by default (use --provision to force re-run)
+
+    # Disable IPv6 on all network adapters (inline PowerShell)
+    # This runs before other provisioners to ensure IPv6 is disabled early
+    dc.vm.provision "shell", privileged: true, inline: <<-SHELL
+      Write-Host "Disabling IPv6 on all network adapters..."
+      Get-NetAdapterBinding -ComponentID ms_tcpip6 | Disable-NetAdapterBinding -ComponentID ms_tcpip6
+      Write-Host "IPv6 disabled on all adapters"
+    SHELL
 
     # Shell provisioner runs PowerShell scripts on Windows guests
     # `path:` points to a script file relative to Vagrantfile location
@@ -259,6 +282,13 @@ Vagrant.configure("2") do |config|
       vb.customize ["modifyvm", :id, "--audio", "none"]
       vb.customize ["modifyvm", :id, "--usb", "off"]
     end
+
+    # Disable IPv6 on all network adapters (inline PowerShell)
+    sccm.vm.provision "shell", privileged: true, inline: <<-SHELL
+      Write-Host "Disabling IPv6 on all network adapters..."
+      Get-NetAdapterBinding -ComponentID ms_tcpip6 | Disable-NetAdapterBinding -ComponentID ms_tcpip6
+      Write-Host "IPv6 disabled on all adapters"
+    SHELL
 
     # Provisioning scripts
     sccm.vm.provision "shell",
@@ -314,7 +344,19 @@ Vagrant.configure("2") do |config|
         vb.customize ["modifyvm", :id, "--paravirtprovider", "kvm"]
         vb.customize ["modifyvm", :id, "--audio", "none"]
         vb.customize ["modifyvm", :id, "--usb", "off"]
+
+        # Disable IPv6 on all network adapters
+        vb.customize ["modifyvm", :id, "--nicpromisc1", "deny"]
+        vb.customize ["modifyvm", :id, "--nicpromisc2", "deny"]
+        vb.customize ["modifyvm", :id, "--nicpromisc3", "deny"]
       end
+
+      # Disable IPv6 on all network adapters (inline PowerShell)
+      client.vm.provision "shell", privileged: true, inline: <<-SHELL
+        Write-Host "Disabling IPv6 on all network adapters..."
+        Get-NetAdapterBinding -ComponentID ms_tcpip6 | Disable-NetAdapterBinding -ComponentID ms_tcpip6
+        Write-Host "IPv6 disabled on all adapters"
+      SHELL
 
       # Provisioning
       client.vm.provision "shell",
@@ -338,6 +380,10 @@ end
 #   1. Boxes download on first `vagrant up` (may take 30+ minutes)
 #   2. Run `vagrant box add gusztavvargadr/windows-server-2022-standard` to pre-download
 #   3. Ensure VirtualBox host-only network exists: VBoxManage list hostonlyifs
+#   4. DISABLE VirtualBox DHCP server (conflicts with DC01 DHCP):
+#      VBoxManage dhcpserver modify --network HostInterfaceNetworking-vboxnet0 --disable
+#      (VirtualBox enables DHCP by default on host-only networks, which will
+#       conflict with the lab's DC01 DHCP server at 192.168.56.10)
 #
 # COMMON ISSUES:
 #

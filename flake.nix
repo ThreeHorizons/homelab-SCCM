@@ -1,233 +1,362 @@
 {
-  # Flake description - shown when someone runs `nix flake metadata`
-  description = "Homelab SCCM - NixOS-based Configuration Manager lab environment";
+  # ===========================================================================
+  # Homelab SCCM - NixVirt-based Configuration Manager Lab Environment
+  # ===========================================================================
+  #
+  # This flake provides:
+  # 1. NixOS module for declarative VM infrastructure (networks, storage, VMs)
+  # 2. Development shell with libvirt tools and PowerShell automation
+  # 3. Cross-platform support (devShell works on Linux/macOS for script editing)
+  #
+  # Architecture: NixVirt + libvirt/QEMU (migrated from Vagrant + VirtualBox)
+  # See: docs/phase1-revision-nixvirt-architecture.md
+  # ===========================================================================
 
-  # Inputs are dependencies this flake needs
-  # Think of this like a package.json or requirements.txt
+  description = "Homelab SCCM - NixOS-based Configuration Manager lab environment (NixVirt + libvirt)";
+
+  # ===========================================================================
+  # INPUTS (Dependencies)
+  # ===========================================================================
   inputs = {
-    # nixpkgs is the main Nix package repository
+    # nixpkgs: Main Nix package repository
     # Using nixos-unstable for latest stable versions of tools
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+
+    # NixVirt: Declarative libvirt configuration
+    # FlakeHub provides stable releases with proper versioning
+    # URL format: https://flakehub.com/f/<org>/<repo>/*.tar.gz
+    # The * wildcard resolves to the latest release
+    #
+    # Why FlakeHub instead of GitHub?
+    # - Stable releases (GitHub master branch can be broken)
+    # - Proper semantic versioning
+    # - Maintained by NixVirt project as recommended approach
+    NixVirt = {
+      url = "https://flakehub.com/f/AshleyYakeley/NixVirt/*.tar.gz";
+
+      # inputs.nixpkgs.follows: Use our nixpkgs instead of NixVirt's
+      # This ensures all packages come from the same nixpkgs version
+      # Prevents duplicate package builds and version conflicts
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  # Outputs are what this flake provides to users
-  # The `{ self, nixpkgs }` parameter receives our inputs defined above
-  outputs = { self, nixpkgs }:
+  # ===========================================================================
+  # OUTPUTS (What this flake provides)
+  # ===========================================================================
+  outputs = { self, nixpkgs, NixVirt }:
     let
-      # Define supported systems
+      # Supported systems for the devShell
+      # NixOS module only works on Linux, but devShell can work elsewhere
       supportedSystems = [
         "x86_64-linux"   # 64-bit Linux (NixOS, Ubuntu, Fedora, etc.)
         "aarch64-linux"  # ARM64 Linux (Raspberry Pi, etc.)
-        "x86_64-darwin"  # Intel macOS
-        "aarch64-darwin" # Apple Silicon macOS
+        "x86_64-darwin"  # Intel macOS (for script editing only)
+        "aarch64-darwin" # Apple Silicon macOS (for script editing only)
       ];
 
-      # Helper function to generate attributes for each system
+      # Helper: Generate attributes for each supported system
+      # Like map() but for attrsets
       forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
 
-      # Import nixpkgs for a specific system
+      # Helper: Import nixpkgs for a specific system
       pkgsFor = system: import nixpkgs {
         inherit system;
-        # Allow unfree packages (some tools may require this)
-        config.allowUnfree = true;
+        config.allowUnfree = true;  # Allow unfree packages (may be needed for some tools)
       };
     in
     {
-      # devShells provides development environments
-      # When you run `nix develop`, Nix looks for devShells.<system>.default
+      # =======================================================================
+      # NIXOS MODULE (Linux only)
+      # =======================================================================
+      # Provides declarative configuration for libvirt VMs
+      # Import this module into your NixOS configuration to deploy the lab
+      #
+      # Usage in /etc/nixos/configuration.nix (or flake.nix):
+      #   imports = [ homelab-sccm.nixosModules.default ];
+      #
+      # Then run: sudo nixos-rebuild switch
+      # This will create networks, storage pools, volumes, and VM definitions
+      # =======================================================================
+      nixosModules.default = { config, lib, pkgs, ... }: {
+        # Import NixVirt's NixOS module
+        # This provides virtualisation.libvirt.* options
+        imports = [ NixVirt.nixosModules.default ];
+
+        # Enable swtpm (Software TPM emulator)
+        # Required for Windows 11 (TPM 2.0 requirement)
+        # This should be set by NixVirt, but we make it explicit here
+        virtualisation.libvirt.swtpm.enable = true;
+
+        # Configure libvirt connection and resources
+        # qemu:///system: System-level libvirt (shared across users)
+        # Alternative: qemu:///session (user-level, less common)
+        virtualisation.libvirt.connections."qemu:///system" = {
+          # Networks: Import our network definitions
+          # Returns an attrset: { lab-net = {...}; default = {...}; }
+          networks = import ./nixvirt/networks.nix { inherit NixVirt; };
+
+          # Storage pools: Import our pool and volume definitions
+          # Returns an attrset: { homelab = {...}; }
+          pools = import ./nixvirt/pools.nix { inherit NixVirt; };
+
+          # Domains (VMs): Import our VM definitions
+          # Returns an attrset: { dc01 = {...}; sccm01 = {...}; ... }
+          domains = import ./nixvirt/domains.nix { inherit NixVirt; };
+        };
+      };
+
+      # =======================================================================
+      # DEVELOPMENT SHELLS (Cross-platform)
+      # =======================================================================
+      # Provides tools for managing VMs and running PowerShell automation
+      # Run: nix develop
+      # =======================================================================
       devShells = forAllSystems (system:
         let
           pkgs = pkgsFor system;
+
+          # Detect if we're on Linux (where libvirt actually works)
+          # On macOS/others, we only provide script editing tools
+          isLinux = pkgs.stdenv.isLinux;
         in
         {
           default = pkgs.mkShell {
-            # `name` is just metadata - appears in shell prompts
             name = "homelab-sccm-devshell";
 
-            # `buildInputs` lists all packages we want available in the shell
-            #
-            # NOTE: VirtualBox is NOT included here.
-            # VirtualBox requires kernel modules and setuid wrappers that must
-            # be installed at the system level. Each platform handles this
-            # differently:
-            #   - NixOS: virtualisation.virtualbox.host.enable = true
-            #   - Ubuntu/Debian: apt install virtualbox
-            #   - Fedora: dnf install VirtualBox
-            #   - macOS: Download from virtualbox.org
-            # See docs/nix-setup.md for detailed installation instructions.
+            # =================================================================
+            # BUILD INPUTS (Available packages)
+            # =================================================================
             buildInputs = with pkgs; [
               # Version control
-              git              # Git version control system
-
-              # VM orchestration
-              vagrant          # Automates VirtualBox VM creation and provisioning
+              git
 
               # Windows automation and management
-              powershell       # PowerShell Core 7.x - cross-platform PowerShell
+              powershell       # PowerShell Core 7.x - cross-platform
 
               # Scripting and automation
-              python3          # Python 3.x for scripting and automation
-              python3Packages.pip  # Python package installer
+              python3
+              python3Packages.pip
 
-              # Networking tools (useful for debugging)
-              curl             # Transfer data with URLs
-              wget             # Download files
-              netcat           # Network debugging
-              freerdp          # GUI remote via xfreerdp
+              # Networking and debugging tools
+              curl
+              wget
+              netcat
+              freerdp          # Remote desktop client (xfreerdp)
 
-              # Text processing (useful for parsing logs)
+              # Text processing (useful for log analysis)
               jq               # JSON processor
               yq-go            # YAML processor
+            ] ++ (if isLinux then [
+              # Linux-only: libvirt and virtualization tools
+              # These don't work on macOS/Windows
+              libvirt          # Provides virsh command-line tool
+              virt-manager     # GUI for managing VMs
+              qemu             # QEMU emulator (provides qemu-img)
+              swtpm            # Software TPM emulator (for Windows 11)
+            ] else [
+              # Non-Linux: Just provide script editing tools
+              # VM management won't work, but you can edit PowerShell scripts
+            ]);
 
-              # Hardware virtualization
-              swtpm            # TPM emulator
-            ];
+            # =================================================================
+            # SHELL HOOK (Runs when entering devShell)
+            # =================================================================
+            shellHook = if isLinux then ''
+              # ===============================================================
+              # LINUX: Full libvirt environment
+              # ===============================================================
+              echo "=============================================================="
+              echo "  Homelab SCCM Development Environment (NixVirt + libvirt)"
+              echo "=============================================================="
+              echo ""
+              echo "Available tools:"
+              echo "  - libvirt: $(virsh --version 2>/dev/null || echo 'not found')"
+              echo "  - virt-manager: $(virt-manager --version 2>/dev/null || echo 'not found')"
+              echo "  - PowerShell: $(pwsh --version 2>/dev/null || echo 'not found')"
+              echo "  - Python: $(python --version 2>/dev/null || echo 'not found')"
+              echo ""
 
-            # `shellHook` runs commands when entering the dev shell
-            shellHook = ''
-              # ============================================================
-              # STORAGE CONFIGURATION
-              # ============================================================
-              # This lab requires ~300GB of disk space for VMs.
-              # By default, files are stored in your home directory:
-              #   - Vagrant boxes: ~/.vagrant.d/boxes/
-              #   - VirtualBox VMs: ~/VirtualBox VMs/
-              #
-              # To use a custom location (e.g., /mnt/vms):
-              #   1. Add to ~/.bashrc or ~/.zshrc:
-              #      export VAGRANT_HOME=/mnt/vms/vagrant-boxes
-              #   2. Configure VirtualBox (one-time):
-              #      VBoxManage setproperty machinefolder /mnt/vms/virtualbox-vms
-              #   3. Reload shell and re-run: nix develop
-              #
-              # Or use the automated script: ./scripts/configure-storage.sh /mnt/vms
-              # See docs/storage-configuration.md for details.
-              # ============================================================
-
-              # Set Vagrant home directory (where boxes are cached)
-              if [ -z "$VAGRANT_HOME" ]; then
-                # Default: Use standard Vagrant location
-                export VAGRANT_HOME="$HOME/.vagrant.d"
-              fi
-
-              # Ensure Vagrant home directory exists (idempotent)
-              mkdir -p "$VAGRANT_HOME/boxes" 2>/dev/null || true
-
-              # Check if custom storage is configured
-              USING_CUSTOM_STORAGE=false
-              if [[ "$VAGRANT_HOME" != "$HOME/.vagrant.d" ]]; then
-                USING_CUSTOM_STORAGE=true
-              fi
-
-              # Check for VirtualBox installation
-              if ! command -v VBoxManage &> /dev/null; then
-                echo "=============================================="
-                echo "  ERROR: VirtualBox is not installed!"
-                echo "=============================================="
-                echo ""
-                echo "VirtualBox must be installed at the system level."
-                echo "See docs/nix-setup.md for installation instructions."
-                echo ""
-                echo "Quick install:"
-                echo "  NixOS:  Add 'virtualisation.virtualbox.host.enable = true;'"
-                echo "          to your configuration.nix and run 'nixos-rebuild switch'"
-                echo "  Ubuntu: sudo apt install virtualbox"
-                echo "  Fedora: sudo dnf install VirtualBox"
-                echo "  macOS:  Download from https://www.virtualbox.org/wiki/Downloads"
-                echo ""
-                echo "=============================================="
+              # Check libvirt daemon status
+              if systemctl is-active --quiet libvirtd 2>/dev/null; then
+                echo "✅ libvirtd is running"
               else
-                # Print welcome message with tool versions
-                echo "=============================================="
-                echo "  Homelab SCCM Development Environment"
-                echo "=============================================="
+                echo "❌ libvirtd is not running!"
+                echo "   Start it: sudo systemctl start libvirtd"
                 echo ""
-                echo "Available tools:"
-                echo "  - Vagrant: $(vagrant --version 2>/dev/null || echo 'not found')"
-                echo "  - VirtualBox: $(VBoxManage --version 2>/dev/null | head -n1 || echo 'not found')"
-                echo "  - PowerShell: $(pwsh --version 2>/dev/null || echo 'not found')"
-                echo "  - Python: $(python --version 2>/dev/null || echo 'not found')"
-                echo ""
+              fi
 
-                # Display storage configuration with helpful guidance
-                echo "Storage configuration:"
-                if [ "$USING_CUSTOM_STORAGE" = true ]; then
-                  echo "  ✓ Custom storage configured"
-                  echo "  - Vagrant boxes: $VAGRANT_HOME"
-                  echo "  - VirtualBox VMs: $(VBoxManage list systemproperties | grep 'Default machine folder' | cut -d: -f2 | xargs)"
+              # Check if user is in libvirt group
+              if groups | grep -q libvirt; then
+                echo "✅ User is in libvirt group"
+              else
+                echo "⚠️  WARNING: You are not in the 'libvirt' group!"
+                echo "   Run: sudo usermod -aG libvirt $USER"
+                echo "   Then logout and login again."
+                echo ""
+              fi
+
+              # Check for VMs (if libvirt is accessible)
+              if command -v virsh &> /dev/null && virsh -c qemu:///system list --all &> /dev/null; then
+                VM_COUNT=$(virsh -c qemu:///system list --all --name | grep -v '^$' | wc -l)
+                if [ "$VM_COUNT" -gt 0 ]; then
+                  echo ""
+                  echo "Virtual machines ($VM_COUNT):"
+                  virsh -c qemu:///system list --all
                 else
-                  echo "  ℹ Using default locations (home directory)"
-                  echo "  - Vagrant boxes: $VAGRANT_HOME"
-                  echo "  - VirtualBox VMs: $(VBoxManage list systemproperties | grep 'Default machine folder' | cut -d: -f2 | xargs)"
                   echo ""
-                  echo "  ⚠ This lab requires ~300GB disk space!"
-                  echo "  To use a different location (e.g., /mnt/vms):"
-                  echo "    ./scripts/configure-storage.sh /mnt/vms"
-                  echo "  See: docs/storage-configuration.md"
-                fi
-                echo ""
-
-                echo "Quick commands:"
-                echo "  - 'cd vagrant && vagrant up' - Start VMs"
-                echo "  - 'vagrant status' - Check VM status"
-                echo "  - 'pwsh' - Enter PowerShell"
-                echo ""
-                echo "Documentation: See docs/ directory"
-                echo "=============================================="
-                echo ""
-
-                # Check if user is in vboxusers group (Linux only)
-                if [[ "$(uname)" == "Linux" ]] && ! groups | grep -q vboxusers; then
-                  echo "WARNING: You are not in the 'vboxusers' group!"
-                  echo "  Run: sudo usermod -aG vboxusers $USER"
-                  echo "  Then logout and login again."
-                  echo ""
-                fi
-
-                # Check for conflicting hypervisor kernel modules (Linux only)
-                if [[ "$(uname)" == "Linux" ]]; then
-                  CONFLICTING_MODULES=""
-                  if lsmod | grep -q "^kvm_amd"; then
-                    CONFLICTING_MODULES="$CONFLICTING_MODULES kvm_amd"
-                  fi
-                  if lsmod | grep -q "^kvm_intel"; then
-                    CONFLICTING_MODULES="$CONFLICTING_MODULES kvm_intel"
-                  fi
-                  if lsmod | grep -q "^kvm " || lsmod | grep -q "^kvm$"; then
-                    CONFLICTING_MODULES="$CONFLICTING_MODULES kvm"
-                  fi
-
-                  if [ -n "$CONFLICTING_MODULES" ]; then
-                    echo "⚠️  WARNING: Conflicting hypervisor modules detected!"
-                    echo "=============================================="
-                    echo "VirtualBox cannot run while KVM is active."
-                    echo ""
-                    echo "Loaded modules:$CONFLICTING_MODULES"
-                    echo ""
-                    echo "To use VirtualBox, unload KVM modules:"
-                    echo "  sudo rmmod kvm_amd kvm_intel kvm"
-                    echo ""
-                    echo "To permanently disable KVM (if not needed):"
-                    echo "  sudo bash -c 'cat > /etc/modprobe.d/blacklist-kvm.conf << EOF"
-                    echo "  blacklist kvm"
-                    echo "  blacklist kvm_amd"
-                    echo "  blacklist kvm_intel"
-                    echo "  EOF'"
-                    echo ""
-                    echo "=============================================="
-                    echo ""
-                  fi
+                  echo "ℹ️  No VMs defined yet."
+                  echo "   Import the NixOS module to create VMs."
+                  echo "   See: docs/phase1-revision-implementation-steps.md"
                 fi
               fi
 
-              # Set environment variables for VirtualBox
-              export VBOX_USER_HOME="$HOME/.config/VirtualBox"
+              echo ""
+              echo "Quick commands:"
+              echo "  - 'virsh -c qemu:///system list --all' - List all VMs"
+              echo "  - 'virsh start DC01' - Start a VM"
+              echo "  - 'virt-manager' - Open GUI manager"
+              echo "  - 'virsh net-list --all' - List networks"
+              echo "  - 'virsh pool-list --all' - List storage pools"
+              echo "  - 'pwsh' - Enter PowerShell for automation scripts"
+              echo ""
+              echo "Next steps:"
+              echo "  1. Ensure prerequisites are met (see checklist)"
+              echo "  2. Import NixOS module into your configuration"
+              echo "  3. Run: sudo nixos-rebuild switch"
+              echo "  4. Download Windows ISOs to /var/lib/libvirt/iso/"
+              echo "  5. Start VMs and install Windows via virt-manager"
+              echo ""
+              echo "Documentation: docs/phase1-revision-nixvirt-architecture.md"
+              echo "=============================================================="
+              echo ""
 
-              # Add current directory to PATH for easy script execution
+              # Add scripts directory to PATH for easy execution
+              export PATH="$PWD/scripts:$PATH"
+            '' else ''
+              # ===============================================================
+              # NON-LINUX: Script editing only
+              # ===============================================================
+              echo "=============================================================="
+              echo "  Homelab SCCM Development Environment (Script Editing Mode)"
+              echo "=============================================================="
+              echo ""
+              echo "⚠️  Note: You are on $(uname -s)"
+              echo "   libvirt VM management is only available on Linux."
+              echo "   This devShell provides PowerShell and scripting tools only."
+              echo ""
+              echo "Available tools:"
+              echo "  - PowerShell: $(pwsh --version 2>/dev/null || echo 'not found')"
+              echo "  - Python: $(python --version 2>/dev/null || echo 'not found')"
+              echo "  - Git: $(git --version 2>/dev/null || echo 'not found')"
+              echo ""
+              echo "You can:"
+              echo "  - Edit PowerShell automation scripts"
+              echo "  - Review and update documentation"
+              echo "  - Test PowerShell modules locally"
+              echo ""
+              echo "For full VM management, use this flake on NixOS or Linux."
+              echo "=============================================================="
+              echo ""
+
               export PATH="$PWD/scripts:$PATH"
             '';
           };
         }
       );
+
+      # =======================================================================
+      # METADATA (Optional, but helpful)
+      # =======================================================================
+      # Provides information about this flake
+      # Visible via: nix flake show
+      # =======================================================================
+
+      # Formatter for 'nix fmt' command (optional)
+      # formatter = forAllSystems (system: (pkgsFor system).nixpkgs-fmt);
     };
 }
+
+# =============================================================================
+# TECHNICAL NOTES
+# =============================================================================
+#
+# 1. FLAKE INPUTS:
+#    - inputs.*.url: Where to fetch the dependency
+#    - inputs.*.follows: Use another input's version (avoid duplicates)
+#    - FlakeHub URLs: https://flakehub.com/f/<org>/<repo>/<version>.tar.gz
+#    - GitHub URLs: github:<org>/<repo>/<branch>
+#
+# 2. NIXOS MODULE SYSTEM:
+#    - Modules are functions: { config, lib, pkgs, ... }: { ... }
+#    - config: The full system configuration (read/write)
+#    - lib: NixOS library functions (attrsets, strings, etc.)
+#    - pkgs: Available packages for this system
+#    - imports: Other modules to include
+#    - Modules are merged recursively (can override each other)
+#
+# 3. LIBVIRT CONNECTIONS:
+#    - qemu:///system: System-level (needs libvirt group, persistent)
+#    - qemu:///session: User-level (no special permissions, non-persistent)
+#    - For this lab: qemu:///system is better (proper networking, shared)
+#
+# 4. DEVSHELL CROSS-PLATFORM:
+#    - isLinux: Only provide libvirt tools on Linux
+#    - macOS/Windows: Just provide PowerShell for script editing
+#    - This allows developers on any platform to work on scripts
+#    - Actual VM management requires NixOS or Linux
+#
+# 5. FLAKE OUTPUTS:
+#    - nixosModules.default: NixOS module (import into configuration.nix)
+#    - devShells.<system>.default: Development environment (nix develop)
+#    - packages.<system>.*: Installable packages (not used here)
+#    - apps.<system>.*: Runnable applications (not used here)
+#
+# 6. IMPORTING NIXVIRT CONFIG:
+#    - import ./nixvirt/networks.nix { inherit NixVirt; }
+#    - Passes NixVirt input to networks.nix as a parameter
+#    - networks.nix returns an attrset of network definitions
+#    - Same pattern for pools.nix and domains.nix
+#
+# 7. VALIDATION:
+#    - Syntax check: nix flake check
+#    - Show structure: nix flake show
+#    - Evaluate module: nix eval .#nixosModules.default
+#    - Enter devShell: nix develop
+#    - Lock inputs: nix flake lock (creates flake.lock)
+#
+# 8. FLAKE LOCK FILE:
+#    - flake.lock: Records exact versions of all inputs
+#    - Generated by: nix flake lock or first nix flake command
+#    - Ensures reproducibility (same flake.lock = same versions)
+#    - Update inputs: nix flake update
+#    - Update one input: nix flake lock --update-input NixVirt
+#
+# 9. NIXOS INTEGRATION:
+#    To use this flake in your NixOS configuration:
+#
+#    Option A: In /etc/nixos/flake.nix:
+#      {
+#        inputs.homelab-sccm.url = "path:/home/user/projects/homelab-SCCM";
+#        outputs = { nixpkgs, homelab-sccm, ... }: {
+#          nixosConfigurations.hostname = nixpkgs.lib.nixosSystem {
+#            modules = [ homelab-sccm.nixosModules.default ./configuration.nix ];
+#          };
+#        };
+#      }
+#
+#    Option B: In /etc/nixos/configuration.nix (if not using flakes):
+#      { config, pkgs, ... }:
+#      let
+#        homelab-sccm = import /home/user/projects/homelab-SCCM;
+#      in {
+#        imports = [ homelab-sccm.nixosModules.default ];
+#      }
+#
+# 10. TROUBLESHOOTING:
+#     - "input ... does not exist": Run 'nix flake lock' to fetch inputs
+#     - "attribute ... missing": Check nixvirt/*.nix files are exporting correctly
+#     - "infinite recursion": Check for circular imports in modules
+#     - "file ... does not exist": Use string paths, not Nix path literals for runtime files
+#
+# =============================================================================

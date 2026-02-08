@@ -94,6 +94,11 @@
         # Required for Windows 11 (TPM 2.0 requirement)
         virtualisation.libvirt.swtpm.enable = true;
 
+        # virtiofsd: vhost-user backend for virtiofs shared directories
+        # Required by libvirt to launch VMs with <filesystem type="mount"> devices.
+        # Without this, virsh start fails with "Unable to find a satisfying virtiofsd".
+        environment.systemPackages = [ pkgs.virtiofsd ];
+
         # Configure libvirt connection and resources
         # qemu:///system: System-level libvirt (shared across users)
         # Alternative: qemu:///session (user-level, less common)

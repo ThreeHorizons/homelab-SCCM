@@ -523,6 +523,7 @@ dsacls $SystemManagementDN | Select-String "SCCM01"
    - Navigate to `D:\SMSSETUP\BIN\X64`
    - Run `extadsch.exe`
    - Check `C:\ExtADSch.log` for success
+   NOTE: You likely need to run extadsch.exe from C: so that it can easily find all needed .dll files.
 
 2. **Create System Management Container**:
    - Open **ADSI Edit** (Run: `adsiedit.msc`)

@@ -106,7 +106,7 @@ let
               driver = { type = "virtiofs"; };
               binary = { path = virtiofsdPath; };
               source = { dir = scriptsDir; };
-              target = { dir = "scripts"; };
+              target = { dir = "configuration_scripts"; };
             }
             {
               type = "mount";
@@ -114,7 +114,7 @@ let
               driver = { type = "virtiofs"; };
               binary = { path = virtiofsdPath; };
               source = { dir = windowsDir; };
-              target = { dir = "windows"; };
+              target = { dir = "windows_installers"; };
             }
           ];
 

@@ -96,11 +96,9 @@
 
         # virtiofsd: vhost-user backend for virtiofs shared directories
         # Required by libvirt to launch VMs with <filesystem type="mount"> devices.
-        # Must be added to libvirtd's systemd service PATH (not just environment.systemPackages)
-        # because systemd services run in an isolated environment and cannot see
-        # /run/current-system/sw/bin. Without this, domain start fails with
-        # "Unable to find a satisfying virtiofsd".
-        systemd.services.libvirtd.path = [ pkgs.virtiofsd ];
+        # The binary path is explicitly set in each filesystem definition in domains.nix
+        # (via <binary path="..."/>), pointing to /run/current-system/sw/bin/virtiofsd.
+        environment.systemPackages = [ pkgs.virtiofsd ];
 
         # Configure libvirt connection and resources
         # qemu:///system: System-level libvirt (shared across users)

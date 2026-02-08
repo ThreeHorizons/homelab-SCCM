@@ -36,6 +36,11 @@ let
   scriptsDir = "/home/myodhes-nix/projects/homelab-SCCM/scripts";
   windowsDir = "/mnt/vms/windows";  # SQL Server, ADK, WinPE, ConfigMgr installers
 
+  # Explicit path to virtiofsd binary.
+  # libvirtd's systemd service cannot find virtiofsd via PATH alone, so we
+  # specify it explicitly in each <filesystem> definition via <binary path="...">.
+  virtiofsdPath = "/run/current-system/sw/bin/virtiofsd";
+
   # ==========================================================================
   # HELPER: mkWindowsVM
   # ==========================================================================
@@ -97,6 +102,7 @@ let
               type = "mount";
               accessmode = "passthrough";
               driver = { type = "virtiofs"; };
+              binary = { path = virtiofsdPath; };
               source = { dir = scriptsDir; };
               target = { dir = "scripts"; };
               readonly = {};
@@ -105,6 +111,7 @@ let
               type = "mount";
               accessmode = "passthrough";
               driver = { type = "virtiofs"; };
+              binary = { path = virtiofsdPath; };
               source = { dir = windowsDir; };
               target = { dir = "windows"; };
               readonly = {};

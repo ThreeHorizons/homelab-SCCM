@@ -54,7 +54,7 @@ let
   #   NIC 1: virbr56 (lab-net, 192.168.56.0/24) - SCCM/AD traffic
   #   NIC 2: virbr0  (default, 192.168.122.0/24) - internet access
   # ==========================================================================
-  mkWindowsVM = { name, uuid, memory, volName, isoFile }:
+  mkWindowsVM = { name, uuid, memory, volName, isoFile, vcpuCount ? 2 }:
     let
       baseVM = NixVirt.lib.domain.templates.windows {
         inherit name uuid memory;
@@ -78,14 +78,14 @@ let
       #   - filesystem: virtiofs mounts for scripts/ and /mnt/vms/windows/
       #   - memballoon: virtio balloon for dynamic memory management
       withDualNIC = baseVM // {
+        # vCPU configuration
+        vcpu = {
+          placement = "static";
+          count = vcpuCount;
+        };
+
         # Shared memory backing: required for virtiofs, also enables KSM page merging.
         # Host must have hardware.ksm.enable = true for KSM to take effect.
-
-        vcpu = {
-               placement = "static";
-               count = vcpuCount;
-             };
-
         memoryBacking = {
           source = { type = "memfd"; };
           access = { mode = "shared"; };

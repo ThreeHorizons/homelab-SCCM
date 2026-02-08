@@ -83,9 +83,15 @@
         # This provides virtualisation.libvirt.* options
         imports = [ NixVirt.nixosModules.default ];
 
+        # Enable NixVirt declarative management
+        # This creates a nixvirt.service systemd unit that runs after libvirtd
+        # and idempotently applies all network/pool/domain definitions below.
+        # Note: This is separate from virtualisation.libvirtd.enable (the daemon).
+        # libvirtd must also be enabled (done in your system config's devops module).
+        virtualisation.libvirt.enable = true;
+
         # Enable swtpm (Software TPM emulator)
         # Required for Windows 11 (TPM 2.0 requirement)
-        # This should be set by NixVirt, but we make it explicit here
         virtualisation.libvirt.swtpm.enable = true;
 
         # Configure libvirt connection and resources

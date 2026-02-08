@@ -1,19 +1,26 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# deploy-vms-standalone.sh
+# DEPRECATED - deploy-vms-standalone.sh
 # ==============================================================================
-# Deploys the SCCM lab VMs using NixVirt's virtdeclare tool directly
-# This allows testing the configuration WITHOUT modifying your NixOS system
+# This script is DEPRECATED. Lab resources are now managed declaratively
+# via NixVirt's NixOS module. Run 'sudo nixos-rebuild switch' instead.
+#
+# The NixVirt module (nixvirt/*.nix + flake.nix nixosModules.default) creates
+# a nixvirt.service systemd unit that idempotently manages networks, pools,
+# volumes, and VM definitions through libvirt.
+#
+# This script is kept for reference and emergency cleanup (--clean).
+# ==============================================================================
+#
+# Original purpose:
+# Deploys the SCCM lab VMs using virsh/virt-install directly.
 #
 # Usage:
-#   ./scripts/deploy-vms-standalone.sh          # Deploy everything
-#   ./scripts/deploy-vms-standalone.sh --dry-run # Show what would be created
 #   ./scripts/deploy-vms-standalone.sh --clean   # Remove all lab resources
 #
 # Prerequisites:
 #   - libvirtd running: sudo systemctl start libvirtd
 #   - User in libvirt group: sudo usermod -aG libvirt $USER (then logout/login)
-#   - ISOs downloaded to /var/lib/libvirt/iso/
 # ==============================================================================
 
 set -euo pipefail

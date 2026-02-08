@@ -80,6 +80,12 @@ let
       withDualNIC = baseVM // {
         # Shared memory backing: required for virtiofs, also enables KSM page merging.
         # Host must have hardware.ksm.enable = true for KSM to take effect.
+
+        vcpu = {
+               placement = "static";
+               count = vcpuCount;
+             };
+
         memoryBacking = {
           source = { type = "memfd"; };
           access = { mode = "shared"; };
@@ -149,7 +155,8 @@ in
   (mkWindowsVM {
     name = "SCCM01";
     uuid = "880e7366-fada-4550-9dc2-dec9daa7fb5c";
-    memory = { count = 4; unit = "GiB"; };
+    vcpuCount = 4;
+    memory = { count = 8; unit = "GiB"; };
     volName = "sccm01";
     isoFile = "windows-server-2022.iso";
   })
@@ -160,7 +167,7 @@ in
   (mkWindowsVM {
     name = "CLIENT01";
     uuid = "0f432a26-5296-4201-9b2f-e3e5c39b03bb";
-    memory = { count = 2; unit = "GiB"; };
+    memory = { count = 4; unit = "GiB"; };
     volName = "client01";
     isoFile = "windows-11.iso";
   })
@@ -171,7 +178,7 @@ in
   (mkWindowsVM {
     name = "CLIENT02";
     uuid = "59693b4a-35bf-4587-ba07-6c960182b0ae";
-    memory = { count = 2; unit = "GiB"; };
+    memory = { count = 4; unit = "GiB"; };
     volName = "client02";
     isoFile = "windows-11.iso";
   })

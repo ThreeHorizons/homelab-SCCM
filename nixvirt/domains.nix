@@ -97,6 +97,8 @@ let
 
           # virtiofs shared directories
           # Mount tags ("scripts", "windows") are used inside the guest to identify shares.
+          # WinFsp + virtio-win virtiofs service auto-mounts these in the guest.
+          # Each tag maps to a separate drive letter (configured in WinFsp).
           filesystem = [
             {
               type = "mount";
@@ -105,7 +107,6 @@ let
               binary = { path = virtiofsdPath; };
               source = { dir = scriptsDir; };
               target = { dir = "scripts"; };
-              readonly = {};
             }
             {
               type = "mount";
@@ -114,7 +115,6 @@ let
               binary = { path = virtiofsdPath; };
               source = { dir = windowsDir; };
               target = { dir = "windows"; };
-              readonly = {};
             }
           ];
 

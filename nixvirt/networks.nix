@@ -25,13 +25,16 @@
   # ============================================================================
   # Subnet: 192.168.56.0/24
   # Gateway: 192.168.56.1 (libvirt host)
-  # DHCP Range: 192.168.56.100 - 192.168.56.200
+  # DHCP: DISABLED - Windows DHCP server on DC01 handles DHCP
   # Bridge: virbr56
   # Mode: NAT (inter-VM communication + internet access)
   #
-  # Static IPs (configured inside Windows guests, outside DHCP range):
-  #   DC01:   192.168.56.10
-  #   SCCM01: 192.168.56.11
+  # Static IPs (configured inside Windows guests):
+  #   DC01:   192.168.56.10 (Domain Controller, DNS, DHCP)
+  #   SCCM01: 192.168.56.11 (SCCM Primary Site Server)
+  #
+  # Dynamic IPs (DHCP range managed by DC01):
+  #   Clients: 192.168.56.100 - 192.168.56.200
   # ============================================================================
   {
     definition = NixVirt.lib.network.writeXML {
@@ -42,12 +45,8 @@
       ip = {
         address = "192.168.56.1";
         netmask = "255.255.255.0";
-        dhcp = {
-          range = {
-            start = "192.168.56.100";
-            end = "192.168.56.200";
-          };
-        };
+        # No dhcp block = DHCP disabled on this network
+        # Windows DHCP server on DC01 will handle DHCP requests
       };
     };
     active = true;

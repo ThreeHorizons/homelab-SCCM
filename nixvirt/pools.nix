@@ -21,8 +21,8 @@
   # ============================================================================
   # HOMELAB STORAGE POOL
   # ============================================================================
-  # Type: Directory-based (/var/lib/libvirt/images/homelab/)
-  # Contains QCOW2 disk images for all VMs
+  # Type: Directory-based (/mnt/vms/homelab/)
+  # Uses dedicated LVM thin-provisioned volume (200 GiB) at /mnt/vms
   # QCOW2 uses sparse allocation - a 60 GiB volume starts ~200 KB on disk
   # ============================================================================
   {
@@ -31,7 +31,7 @@
       uuid = "31c47f9a-9ee8-4fd2-9f83-25733e81b978";
       type = "dir";
       target = {
-        path = "/var/lib/libvirt/images/homelab";
+        path = "/mnt/vms/homelab";
       };
     };
     active = true;

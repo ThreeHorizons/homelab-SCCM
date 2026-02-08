@@ -1049,9 +1049,10 @@ When adding features or fixing issues:
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| Phase 1: Nix Flake Foundation | 🟡 Next | Starting point |
-| Phase 2: Vagrant Topology | ⚪ Planned | Depends on Phase 1 |
-| Phase 3: WinRM Automation | ⚪ Planned | Core functionality |
+| Phase 1: Nix Flake Foundation | ✅ Complete | NixVirt + libvirt/QEMU |
+| Phase 1 Revision: NixVirt Migration | 🟡 In Progress (6/8) | Declarative VM deployment working, Steps 7-8 remain |
+| Phase 2: Vagrant Topology | ⚪ Superseded | Replaced by NixVirt in Phase 1 Revision |
+| Phase 3: WinRM Automation | ⚪ Planned | Core functionality - next after Phase 1 Revision |
 | **Phase 3.5: Azure Integration** | ⚪ **Optional** | **Modern cloud management** |
 | Phase 4: PXE & OSD | ⚪ Planned | Advanced features |
 | Phase 5: Linux Support | ⚪ Future | Cross-platform |

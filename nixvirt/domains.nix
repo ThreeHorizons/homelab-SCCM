@@ -16,7 +16,7 @@
 #
 # VMs defined here:
 #   DC01     - Domain Controller (AD DS, DNS, DHCP)
-#   SCCM01   - SCCM Primary Site (SQL Server, ConfigMgr)
+#   SCCM01 Feb 07 20:18:16 frameworking systemd[1]: Starting Configure libvirt objects...
 #   CLIENT01 - Windows 11 managed client
 #   CLIENT02 - Windows 11 managed client
 

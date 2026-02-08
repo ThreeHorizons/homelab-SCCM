@@ -30,6 +30,12 @@ let
   nvramDir = "/var/lib/libvirt/qemu/nvram";
   pool = "homelab";
 
+  # Shared directories (virtiofs)
+  # These host directories are mounted into each VM via virtiofs.
+  # Windows guests need WinFsp + virtio-win virtiofs service to access them.
+  scriptsDir = "/home/myodhes-nix/projects/homelab-SCCM/scripts";
+  windowsDir = "/mnt/vms/windows";  # SQL Server, ADK, WinPE, ConfigMgr installers
+
   # ==========================================================================
   # HELPER: mkWindowsVM
   # ==========================================================================
@@ -61,7 +67,19 @@ let
       #
       # We wrap it in a list and append a second NIC for the default network.
       # Both use type = "bridge" (direct bridge attachment) for consistency.
+      #
+      # Also adds:
+      #   - memoryBacking: shared memory (memfd) required for virtiofs and KSM
+      #   - filesystem: virtiofs mounts for scripts/ and /mnt/vms/windows/
+      #   - memballoon: virtio balloon for dynamic memory management
       withDualNIC = baseVM // {
+        # Shared memory backing: required for virtiofs, also enables KSM page merging.
+        # Host must have hardware.ksm.enable = true for KSM to take effect.
+        memoryBacking = {
+          source = { type = "memfd"; };
+          access = { mode = "shared"; };
+        };
+
         devices = baseVM.devices // {
           interface = [
             baseVM.devices.interface
@@ -71,6 +89,30 @@ let
               model = { type = "e1000e"; };
             }
           ];
+
+          # virtiofs shared directories
+          # Mount tags ("scripts", "windows") are used inside the guest to identify shares.
+          filesystem = [
+            {
+              type = "mount";
+              accessmode = "passthrough";
+              driver = { type = "virtiofs"; };
+              source = { dir = scriptsDir; };
+              target = { dir = "scripts"; };
+              readonly = {};
+            }
+            {
+              type = "mount";
+              accessmode = "passthrough";
+              driver = { type = "virtiofs"; };
+              source = { dir = windowsDir; };
+              target = { dir = "windows"; };
+              readonly = {};
+            }
+          ];
+
+          # Virtio memory balloon for dynamic memory management
+          memballoon = { model = "virtio"; };
         };
       };
     in

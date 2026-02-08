@@ -16,7 +16,6 @@
 #
 # VMs defined here:
 #   DC01     - Domain Controller (AD DS, DNS, DHCP)
-#   SCCM01 Feb 07 20:18:16 frameworking systemd[1]: Starting Configure libvirt objects...
 #   CLIENT01 - Windows 11 managed client
 #   CLIENT02 - Windows 11 managed client
 
@@ -27,7 +26,7 @@ let
   # CONFIGURATION
   # ==========================================================================
   # String paths (not Nix path literals) to avoid eval-time file existence checks
-  isoDir = "/var/lib/libvirt/iso";
+  isoDir = "/mnt/vms/iso";
   nvramDir = "/var/lib/libvirt/qemu/nvram";
   pool = "homelab";
 

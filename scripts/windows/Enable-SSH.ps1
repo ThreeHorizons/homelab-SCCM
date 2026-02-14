@@ -18,11 +18,12 @@ Set-Service -Name sshd -StartupType 'Automatic'
 # Confirm the firewall rule is configured
 Write-Host "`nChecking firewall rules..." -ForegroundColor Cyan
 $firewallRule = Get-NetFirewallRule -Name *ssh* -ErrorAction SilentlyContinue
+
 if ($firewallRule) {
-    Write-Host "✓ SSH firewall rules are configured" -ForegroundColor Green
+    Write-Host "SSH firewall rules are configured" -ForegroundColor Green
     $firewallRule | Format-Table Name, Enabled, Direction, Action
 } else {
-    Write-Host "⚠ No SSH firewall rules found, creating..." -ForegroundColor Yellow
+    Write-Host "No SSH firewall rules found, creating..." -ForegroundColor Yellow
     New-NetFirewallRule -Name sshd -DisplayName 'OpenSSH Server (sshd)' -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22
 }
 
@@ -32,7 +33,7 @@ New-ItemProperty -Path "HKLM:\SOFTWARE\OpenSSH" -Name DefaultShell `
     -Value "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" `
     -PropertyType String -Force | Out-Null
 
-Write-Host "`n✓ SSH is now enabled!" -ForegroundColor Green
+Write-Host "`nSSH is now enabled!" -ForegroundColor Green
 Write-Host "`nYou can now connect from Linux:" -ForegroundColor Cyan
 Write-Host "  ssh Administrator@192.168.56.10" -ForegroundColor White
-Write-Host "`nYour default shell is PowerShell - you'll be in a PowerShell prompt when you connect." -ForegroundColor Gray
+Write-Host "`nYour default shell is PowerShell,you will be in a PowerShell prompt when you connect." -ForegroundColor Gray

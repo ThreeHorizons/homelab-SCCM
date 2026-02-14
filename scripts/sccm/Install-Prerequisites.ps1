@@ -134,7 +134,7 @@ $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) "modules"
 Import-Module -Name (Join-Path $modulePath "Logger.psm1") -Force -ErrorAction Stop
 Import-Module -Name (Join-Path $modulePath "Validator.psm1") -Force -ErrorAction Stop
 
-Initialize-Logging -LogName "Install-SCCMPrereqs"
+Initialize-Logging -LogDirectory "Install-SCCMPrereqs"
 
 Write-LogSection "SCCM Prerequisites Installation"
 

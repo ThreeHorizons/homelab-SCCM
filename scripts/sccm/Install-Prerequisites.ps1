@@ -438,28 +438,63 @@ if ($odbcDriver) {
 # VISUAL C++ REDISTRIBUTABLES
 # ============================================================================
 
-Write-LogSection "Checking Visual C++ Redistributables"
+Write-LogSection "Installing Visual C++ Redistributables"
 
-# SCCM requires various VC++ redistributables
-# These are usually installed by SQL Server and other components
-# But we check to make sure
+# SCCM setup installs OLE DB Driver 19 for SQL Server, which requires
+# BOTH x86 and x64 Visual C++ 2022 Redistributable (v14.34+).
+# Without both architectures, SCCM setup fails with:
+#   "Failed to install msoledbsql.msi"
+# SQL Server may have installed the x64 version, but the x86 version
+# is commonly missing and must be installed explicitly.
 
-# Check for VC++ 2015-2022 (most important for current SCCM)
-$vcRedist = Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64" -ErrorAction SilentlyContinue
+$vcRedistInstallers = @(
+    @{
+        Architecture = "x64"
+        Url = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+        RegistryPath = "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
+        AltRegistryPath = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64"
+        MinVersion = "14.34"
+    },
+    @{
+        Architecture = "x86"
+        Url = "https://aka.ms/vs/17/release/vc_redist.x86.exe"
+        RegistryPath = "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x86"
+        AltRegistryPath = "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x86"
+        MinVersion = "14.34"
+    }
+)
 
-if ($vcRedist) {
-    Write-Log "Visual C++ 2015-2022 Redistributable (x64) is installed." -Level SUCCESS
-    Write-Log "Version: $($vcRedist.Version)" -Level DEBUG
-} else {
-    # Check WOW64 path for 32-bit
-    $vcRedist32 = Get-ItemProperty "HKLM:\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\14.0\VC\Runtimes\x64" -ErrorAction SilentlyContinue
+foreach ($vcRedist in $vcRedistInstallers) {
+    $installed = Get-ItemProperty $vcRedist.RegistryPath -ErrorAction SilentlyContinue
+    if (-not $installed) {
+        $installed = Get-ItemProperty $vcRedist.AltRegistryPath -ErrorAction SilentlyContinue
+    }
 
-    if ($vcRedist32) {
-        Write-Log "Visual C++ 2015-2022 Redistributable (x64) is installed." -Level SUCCESS
+    if ($installed) {
+        Write-Log "Visual C++ 2015-2022 Redistributable ($($vcRedist.Architecture)) is installed. Version: $($installed.Version)" -Level SUCCESS
     } else {
-        Write-Log "Visual C++ 2015-2022 Redistributable may not be installed." -Level WARN
-        Write-Log "This is usually installed by SQL Server. If SCCM setup fails, download from:" -Level INFO
-        Write-Log "https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist" -Level INFO
+        Write-Log "Visual C++ 2015-2022 Redistributable ($($vcRedist.Architecture)) is missing. Installing..." -Level WARN
+
+        $installerPath = Join-Path $DownloadPath "vc_redist.$($vcRedist.Architecture).exe"
+
+        try {
+            Write-Log "Downloading VC++ Redistributable ($($vcRedist.Architecture))..." -Level INFO
+            Invoke-WebRequest -Uri $vcRedist.Url -OutFile $installerPath -UseBasicParsing
+
+            Write-Log "Installing VC++ Redistributable ($($vcRedist.Architecture))..." -Level INFO
+            $process = Start-Process -FilePath $installerPath -ArgumentList "/install /quiet /norestart" -Wait -NoNewWindow -PassThru
+
+            if ($process.ExitCode -eq 0 -or $process.ExitCode -eq 3010) {
+                Write-Log "Visual C++ 2015-2022 Redistributable ($($vcRedist.Architecture)) installed successfully." -Level SUCCESS
+            } else {
+                Write-Log "VC++ Redistributable ($($vcRedist.Architecture)) install returned exit code: $($process.ExitCode)" -Level ERROR
+            }
+        }
+        catch {
+            Write-LogError "Failed to install VC++ Redistributable ($($vcRedist.Architecture))"
+            Write-Log "Error: $_" -Level ERROR
+            Write-Log "Download manually from: https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist" -Level INFO
+        }
     }
 }
 
@@ -613,6 +648,8 @@ $prereqStatus = @(
     @{Component = "SQL Server Collation"; Status = "Verify Manually"},
     @{Component = "Windows ADK"; Status = $(if (Test-Path "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit") {"Installed"} else {"Missing"})},
     @{Component = "Windows PE Add-on"; Status = $(if (Test-Path "C:\Program Files (x86)\Windows Kits\10\Assessment and Deployment Kit\Windows Preinstallation Environment") {"Installed"} else {"Missing"})},
+    @{Component = "VC++ 2022 Redist (x64)"; Status = $(if (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64" -ErrorAction SilentlyContinue) {"Installed"} else {"Missing"})},
+    @{Component = "VC++ 2022 Redist (x86)"; Status = $(if (Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x86" -ErrorAction SilentlyContinue) {"Installed"} else {"Missing"})},
     @{Component = "AD Schema Extension"; Status = "Verify Manually"},
     @{Component = "System Management Container"; Status = "Verify Manually"}
 )

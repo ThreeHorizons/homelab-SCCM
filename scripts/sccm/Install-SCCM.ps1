@@ -459,7 +459,7 @@ $prereqProcess = Start-Process -FilePath $setupExe `
     -ArgumentList "/PREREQ /SCRIPT `"$configPath`"" `
     -Wait -NoNewWindow -PassThru
 
-if ($prereqProcess.ExitCode -ne 0) {
+    if ($prereqProcess.ExitCode -ne 0) {
     Write-LogError "Prerequisite check failed with exit code: $($prereqProcess.ExitCode)"
     Write-Log "Check the prerequisite log for details:" -Level ERROR
     Write-Log "  C:\ConfigMgrPrereq.log" -Level ERROR

@@ -74,6 +74,7 @@ let
       # Both use type = "bridge" (direct bridge attachment) for consistency.
       #
       # Also adds:
+      #   - os.nvram: qcow2 format for snapshot support (libvirt 9.2.0+)
       #   - memoryBacking: shared memory (memfd) required for virtiofs and KSM
       #   - filesystem: virtiofs mounts for scripts/ and /mnt/vms/windows/
       #   - memballoon: virtio balloon for dynamic memory management
@@ -82,6 +83,19 @@ let
         vcpu = {
           placement = "static";
           count = vcpuCount;
+        };
+
+        # UEFI NVRAM in qcow2 format for internal snapshot support.
+        # Template is in raw format, but libvirt 11.7.0 supports format conversion.
+        # This enables internal snapshots (virsh snapshot-create-as without --disk-only).
+        os = baseVM.os // {
+          nvram = {
+            _type = "element-with-text";
+            template = baseVM.os.nvram.template;
+            format = "qcow2";
+            templateFormat = "raw";  # OVMF template is raw format
+            text = baseVM.os.nvram.text;
+          };
         };
 
         # Shared memory backing: required for virtiofs, also enables KSM page merging.

@@ -748,6 +748,34 @@ Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$ODBCPath`" /quiet /no
 Get-ItemProperty "HKLM:\SOFTWARE\ODBC\ODBCINST.INI\ODBC Driver 18 for SQL Server" -ErrorAction SilentlyContinue
 ```
 
+### Step 14: Install Visual C++ Redistributables
+
+**Required for OLE DB Driver 19** (which SCCM setup installs automatically). The x64 OLE DB Driver requires **both** x86 and x64 versions of the Visual C++ 2022 Redistributable (v14.34+). Without these, SCCM setup will fail with: `Failed to install msoledbsql.msi`.
+
+```powershell
+# Download and install Visual C++ 2015-2022 Redistributable (x64)
+$VCRedistx64Url = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+$VCRedistx64Path = "C:\Temp\vc_redist.x64.exe"
+
+New-Item -ItemType Directory -Path "C:\Temp" -Force -ErrorAction SilentlyContinue
+Invoke-WebRequest -Uri $VCRedistx64Url -OutFile $VCRedistx64Path
+Start-Process -FilePath $VCRedistx64Path -ArgumentList "/install /quiet /norestart" -Wait
+
+# Download and install Visual C++ 2015-2022 Redistributable (x86)
+# The x64 OLE DB Driver requires BOTH architectures
+$VCRedistx86Url = "https://aka.ms/vs/17/release/vc_redist.x86.exe"
+$VCRedistx86Path = "C:\Temp\vc_redist.x86.exe"
+
+Invoke-WebRequest -Uri $VCRedistx86Url -OutFile $VCRedistx86Path
+Start-Process -FilePath $VCRedistx86Path -ArgumentList "/install /quiet /norestart" -Wait
+
+# Verify both are installed
+Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64" -ErrorAction SilentlyContinue | Select-Object Version
+Get-ItemProperty "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x86" -ErrorAction SilentlyContinue | Select-Object Version
+```
+
+> **Note**: SQL Server installation may have already installed the x64 version. The commonly missed piece is the **x86 version**, which is also required by the OLE DB Driver 19 x64 installer.
+
 ---
 
 ## Phase 3C: SCCM Installation (SCCM01)
@@ -762,7 +790,7 @@ Configuration Manager installation involves:
 
 > **Reference**: [Site and site system prerequisites](https://learn.microsoft.com/en-us/mem/configmgr/core/plan-design/configs/site-and-site-system-prerequisites)
 
-### Step 14: Install SCCM Prerequisites
+### Step 15: Install SCCM Prerequisites
 
 #### Windows Features
 
@@ -862,7 +890,7 @@ if (Test-Path $ADKPath) {
 }
 ```
 
-### Step 15: Install SCCM
+### Step 16: Install SCCM
 
 > **Reference**: [Install a primary site using the Setup Wizard](https://learn.microsoft.com/en-us/mem/configmgr/core/servers/deploy/install/use-the-setup-wizard-to-install-sites)
 
@@ -964,7 +992,7 @@ Start-Process -FilePath "D:\SMSSETUP\BIN\X64\setup.exe" -ArgumentList "/SCRIPT `
 20. **Prerequisite Check**: All should pass (green). Click **Begin Install**
 21. Wait 30-60 minutes for installation
 
-### Step 16: Verify SCCM Installation
+### Step 17: Verify SCCM Installation
 
 ```powershell
 # Check SCCM services
@@ -980,7 +1008,7 @@ Get-WmiObject -Namespace "root\SMS\site_PS1" -Class SMS_Site |
 & "C:\Program Files (x86)\Microsoft Endpoint Manager\AdminConsole\bin\Microsoft.ConfigurationManagement.exe"
 ```
 
-### Step 17: Configure SCCM Post-Installation
+### Step 18: Configure SCCM Post-Installation
 
 > **Reference**: [Configure discovery methods](https://learn.microsoft.com/en-us/mem/configmgr/core/servers/deploy/configure/configure-discovery-methods)
 
@@ -1076,7 +1104,7 @@ Get-CMBoundaryGroup | Format-Table Name, SiteSystemCount
 
 ## Phase 3D: Client Configuration
 
-### Step 18: Join Clients to Domain
+### Step 19: Join Clients to Domain
 
 ```powershell
 # On CLIENT01
@@ -1094,7 +1122,7 @@ $Credential = Get-Credential -Message "Enter LAB\Administrator credentials"
 Add-Computer -DomainName "lab.local" -Credential $Credential -OUPath "OU=Workstations,DC=lab,DC=local" -Restart
 ```
 
-### Step 19: Install SCCM Client
+### Step 20: Install SCCM Client
 
 #### Option 1: Client Push (Automatic)
 
@@ -1127,7 +1155,7 @@ Start-Process -FilePath "$Dest\ccmsetup.exe" -ArgumentList "/mp:SCCM01.lab.local
 Get-Content "C:\Windows\ccmsetup\Logs\ccmsetup.log" -Tail 20 -Wait
 ```
 
-### Step 20: Verify Client Installation
+### Step 21: Verify Client Installation
 
 ```powershell
 # Check SCCM client service

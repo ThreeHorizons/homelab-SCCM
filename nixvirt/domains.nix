@@ -89,12 +89,9 @@ let
         # Template is in raw format, but libvirt 11.7.0 supports format conversion.
         # This enables internal snapshots (virsh snapshot-create-as without --disk-only).
         os = baseVM.os // {
-          nvram = {
-            _type = "element-with-text";
-            template = baseVM.os.nvram.template;
+          nvram = baseVM.os.nvram // {
             format = "qcow2";
             templateFormat = "raw";  # OVMF template is raw format
-            text = baseVM.os.nvram.text;
           };
         };
 

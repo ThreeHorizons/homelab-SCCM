@@ -137,6 +137,18 @@ let
 
           # Virtio memory balloon for dynamic memory management
           memballoon = { model = "virtio"; };
+
+          # Disable 3D acceleration to enable snapshot support.
+          # virgl (3D acceleration) is not migratable, causing snapshot errors.
+          # Windows Server VMs don't need 3D acceleration for SCCM/AD workloads.
+          video = {
+            model = {
+              type = "virtio";
+              heads = 1;
+              primary = true;
+              acceleration = null;  # Disable 3D acceleration
+            };
+          };
         };
       };
     in

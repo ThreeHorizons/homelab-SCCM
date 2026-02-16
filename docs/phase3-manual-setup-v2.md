@@ -1041,8 +1041,7 @@ Set-CMBoundaryGroup `
 
 # Add site system server (SCCM01) to boundary group
 $SiteServer = Get-CMSiteSystemServer -SiteSystemServerName "SCCM01.lab.local"
-Add-CMBoundaryGroupSiteSystem -BoundaryGroupName "Lab Network Boundary Group" -SiteSystemServer $SiteServer
-
+Set-CMBoundaryGroup -Name "Lab Network Boundary Group" -AddSiteSystemServer $SiteServer
 # 5. Enable Active Directory System Discovery
 # Documentation: https://learn.microsoft.com/en-us/powershell/module/configurationmanager/set-cmdiscoverymethod
 Set-CMDiscoveryMethod -ActiveDirectorySystemDiscovery -SiteCode "PS1" -Enabled $true

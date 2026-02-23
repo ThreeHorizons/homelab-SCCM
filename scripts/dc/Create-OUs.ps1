@@ -294,8 +294,9 @@ try {
 
     Write-Log "" -Level INFO
     Write-Log "Next Steps:" -Level INFO
-    Write-Log "  1. Run Create-ServiceAccounts.ps1 to create service accounts" -Level INFO
-    Write-Log "  2. When joining computers to the domain, specify the target OU:" -Level INFO
+    Write-Log "  1. Run Configure-GPOs.ps1 to create baseline firewall and management GPOs" -Level INFO
+    Write-Log "  2. Run Create-ServiceAccounts.ps1 to create service accounts" -Level INFO
+    Write-Log "  3. When joining computers to the domain, specify the target OU:" -Level INFO
     Write-Log "     - Servers -> OU=Servers,$DomainDN" -Level INFO
     Write-Log "     - Clients -> OU=Workstations,$DomainDN" -Level INFO
 

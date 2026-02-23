@@ -116,6 +116,7 @@ let
           # Mount tags ("scripts", "windows") are used inside the guest to identify shares.
           # WinFsp + virtio-win virtiofs service auto-mounts these in the guest.
           # Each tag maps to a separate drive letter (configured in WinFsp).
+          # Requirments: spice-guest-tools winfsp, set services to automatic.
           filesystem = [
             {
               type = "mount";
